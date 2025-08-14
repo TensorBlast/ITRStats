@@ -82,6 +82,14 @@ def main() -> None:
         df[daily_col_name] = df[col].diff().fillna(0)
         daily_change_cols[col] = daily_col_name
 
+    # Calculate pending processing percentage and its daily change
+    df["pending_processing_percentage"] = ((df["e_verified_returns"] - df["total_processed_refund"]) / df["e_verified_returns"]).fillna(0)
+    daily_change_cols["pending_processing_percentage"] = "daily_pending_processing_percentage"
+    df["daily_pending_processing_percentage"] = df["pending_processing_percentage"].diff().fillna(0)
+
+    # Calculate 7-day rolling average of processed refunds
+    df["avg_processed_last_7_days"] = df[daily_change_cols["total_processed_refund"]].rolling(window=7).mean()
+
     df = df.reset_index().rename(columns={"index": "provider_date"})
     df["weekday"] = df["provider_date"].dt.day_name()
 
@@ -92,9 +100,9 @@ def main() -> None:
     def fmt(n: int | float) -> str:
         return f"{int(n):,}"
 
-    st.subheader("Latest Cumulative Figures")
+    st.subheader("Latest Key Figures")
     st.caption(f"As of provider date: {last['provider_date'].strftime('%Y-%m-%d')}. Delta is change from previous day.")
-    c1, c2, c3, c4 = st.columns(4)
+    c1, c2, c3, c4, c5, c6 = st.columns(6)
     with c1:
         st.metric("e-Verified Returns", fmt(last["e_verified_returns"]), fmt(last[daily_change_cols["e_verified_returns"]]))
     with c2:
@@ -103,6 +111,20 @@ def main() -> None:
         st.metric("Registered Users", fmt(last["indv_reg_users"]), fmt(last[daily_change_cols["indv_reg_users"]]))
     with c4:
         st.metric("Aadhaar-linked PAN", fmt(last["total_aadhar_linked_pan"]), fmt(last[daily_change_cols["total_aadhar_linked_pan"]]))
+    with c5:
+        st.metric(
+            "Pending Processing",
+            f"{last['pending_processing_percentage']:.2%}",
+            f"{last['daily_pending_processing_percentage']:.2%}",
+        )
+    with c6:
+        avg_processed_val = last['avg_processed_last_7_days']
+        avg_processed_delta = (last['avg_processed_last_7_days'] - prev['avg_processed_last_7_days']) if prev is not None and pd.notna(prev['avg_processed_last_7_days']) else None
+        st.metric(
+            "Avg Processed (7d)",
+            fmt(avg_processed_val) if pd.notna(avg_processed_val) else "N/A",
+            fmt(avg_processed_delta) if avg_processed_delta is not None and pd.notna(avg_processed_delta) else None,
+        )
 
 
     st.subheader("Daily Changes Analysis")
@@ -131,7 +153,10 @@ def main() -> None:
     st.altair_chart(daily_chart, use_container_width=True)
 
 
-    st.subheader("Cumulative Totals Over Time")
+    st.subheader("Metrics Over Time")
+    st.write("Cumulative totals for key metrics, and the percentage of e-verified returns pending processing.")
+
+    # Melt cumulative data for plotting
     cumulative_df_melted = df.melt(
         id_vars=["provider_date"],
         value_vars=cumulative_cols,
@@ -140,13 +165,27 @@ def main() -> None:
     )
     cumulative_df_melted["metric"] = cumulative_df_melted["metric"].str.replace("_", " ").str.title()
 
-    cumulative_chart = alt.Chart(cumulative_df_melted).mark_line().encode(
+    # Layer 1: Cumulative counts
+    line_cumulative = alt.Chart(cumulative_df_melted).mark_line(point=True).encode(
         x=alt.X("provider_date:T", title="Date"),
-        y=alt.Y("total:Q", title="Cumulative Total"),
+        y=alt.Y("total:Q", title="Cumulative Totals"),
         color=alt.Color("metric:N", title="Metric"),
         tooltip=["provider_date:T", "metric:N", alt.Tooltip("total:Q", format=",")],
+    )
+
+    # Layer 2: Percentage line
+    line_percentage = alt.Chart(df).mark_line(point=True, strokeDash=[5,5], color="firebrick").encode(
+        x=alt.X("provider_date:T", title="Date"),
+        y=alt.Y("pending_processing_percentage:Q", title="Pending Processing %", axis=alt.Axis(format='%')),
+        tooltip=[alt.Tooltip("provider_date:T"), alt.Tooltip("pending_processing_percentage:Q", format=".2%")],
+    )
+
+    # Combine charts with independent y-axes
+    combined_chart = alt.layer(line_cumulative, line_percentage).resolve_scale(
+        y='independent'
     ).interactive()
-    st.altair_chart(cumulative_chart, use_container_width=True)
+
+    st.altair_chart(combined_chart, use_container_width=True)
 
 
     st.subheader("Weekly Processing Patterns")
@@ -168,19 +207,32 @@ def main() -> None:
         color = 'background-color: #fff2cc' if row.interpolated else ''
         return [color] * len(row)
 
-    # Hide technical columns from display
-    display_df = df.drop(columns=[col for col in df.columns if col.startswith('daily_') and 'processed' not in col])
-    display_df['daily_total_processed_refund'] = display_df['daily_total_processed_refund'].astype(int)
-    display_df['pending_processing_percentage'] = (display_df['e_verified_returns'] - display_df['total_processed_refund']) / display_df['e_verified_returns']
+    # Prepare dataframe for display
+    # We select and format columns for a clean presentation in the raw data table.
+    display_df = df.copy()
+    
+    # Ensure daily processed is int for display
+    display_df[daily_change_cols["total_processed_refund"]] = display_df[daily_change_cols["total_processed_refund"]].astype(int)
 
-    # Drop columns that can be removed before styling, then hide 'interpolated' after styling
-    cols_to_drop = ["collected_at", "id", "collected_date"]
-    display_df = display_df.drop(columns=[c for c in cols_to_drop if c in display_df.columns])
+    # Columns to show in the raw data table
+    cols_to_show = [
+        "provider_date",
+        "e_verified_returns",
+        "total_processed_refund",
+        daily_change_cols["total_processed_refund"],
+        "pending_processing_percentage",
+        "indv_reg_users",
+        "total_aadhar_linked_pan",
+        "weekday",
+        "interpolated",  # needed for styling
+    ]
+    # Filter display_df to only include columns that actually exist in df
+    display_df = display_df[[col for col in cols_to_show if col in display_df.columns]]
 
     st.dataframe(
-        display_df.style.apply(highlight_interpolated, axis=1).hide(
-            ["interpolated"], axis=1
-        ),
+        display_df.style.apply(highlight_interpolated, axis=1)
+        .format({"pending_processing_percentage": "{:.2%}"})
+        .hide(subset=["interpolated"], axis="columns"),
         use_container_width=True,
     )
 
