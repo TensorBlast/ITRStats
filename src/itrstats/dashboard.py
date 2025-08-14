@@ -169,11 +169,12 @@ def main() -> None:
         return [color] * len(row)
 
     # Hide technical columns from display
-    display_df = df.drop(columns=[col for col in df.columns if col.startswith('daily_')])
+    display_df = df.drop(columns=[col for col in df.columns if col.startswith('daily_') and 'processed' not in col])
+    display_df['daily_total_processed_refund'] = display_df['daily_total_processed_refund'].astype(int)
+    display_df['pending_processing_percentage'] = (display_df['e_verified_returns'] - display_df['total_processed_refund']) / display_df['e_verified_returns']
     st.dataframe(
-        display_df.style.apply(highlight_interpolated, axis=1).hide(
-            subset=["interpolated", "collected_at", "id", "collected_date"], axis="columns"
-        ),
+        display_df.style.apply(highlight_interpolated, axis=1)
+        .hide(subset=["interpolated", "collected_at", "id", "collected_date"], axis="columns"),
         use_container_width=True
     )
 
