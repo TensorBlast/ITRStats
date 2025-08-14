@@ -179,7 +179,7 @@ def main() -> None:
 
     st.dataframe(
         display_df.style.apply(highlight_interpolated, axis=1).hide(
-            subset=["interpolated"], axis="columns"
+            ["interpolated"], axis=1
         ),
         use_container_width=True,
     )
