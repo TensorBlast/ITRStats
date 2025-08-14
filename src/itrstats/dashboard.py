@@ -88,7 +88,7 @@ def main() -> None:
     df["daily_pending_processing_percentage"] = df["pending_processing_percentage"].diff().fillna(0)
 
     # Calculate 7-day rolling average of processed refunds
-    df["avg_processed_last_7_days"] = df[daily_change_cols["total_processed_refund"]].rolling(window=7).mean()
+    df["avg_processed_last_7_days"] = df[daily_change_cols["total_processed_refund"]].rolling(window=7, min_periods=1).mean()
 
     df = df.reset_index().rename(columns={"index": "provider_date"})
     df["weekday"] = df["provider_date"].dt.day_name()
