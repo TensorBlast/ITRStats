@@ -172,7 +172,7 @@ def main() -> None:
     display_df = df.drop(columns=[col for col in df.columns if col.startswith('daily_')])
     st.dataframe(
         display_df.style.apply(highlight_interpolated, axis=1).hide(
-            columns=["interpolated", "collected_at", "id", "collected_date"]
+            subset=["interpolated", "collected_at", "id", "collected_date"], axis="columns"
         ),
         use_container_width=True
     )
