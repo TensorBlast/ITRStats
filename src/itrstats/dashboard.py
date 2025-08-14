@@ -172,10 +172,16 @@ def main() -> None:
     display_df = df.drop(columns=[col for col in df.columns if col.startswith('daily_') and 'processed' not in col])
     display_df['daily_total_processed_refund'] = display_df['daily_total_processed_refund'].astype(int)
     display_df['pending_processing_percentage'] = (display_df['e_verified_returns'] - display_df['total_processed_refund']) / display_df['e_verified_returns']
+
+    # Drop columns that can be removed before styling, then hide 'interpolated' after styling
+    cols_to_drop = ["collected_at", "id", "collected_date"]
+    display_df = display_df.drop(columns=[c for c in cols_to_drop if c in display_df.columns])
+
     st.dataframe(
-        display_df.style.apply(highlight_interpolated, axis=1)
-        .hide(subset=["interpolated", "collected_at", "id", "collected_date"], axis="columns"),
-        use_container_width=True
+        display_df.style.apply(highlight_interpolated, axis=1).hide(
+            subset=["interpolated"], axis="columns"
+        ),
+        use_container_width=True,
     )
 
 
