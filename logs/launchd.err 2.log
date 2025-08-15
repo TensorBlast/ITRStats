@@ -1,0 +1,6 @@
+shell-init: error retrieving current directory: getcwd: cannot access parent directories: Operation not permitted
+job-working-directory: error retrieving current directory: getcwd: cannot access parent directories: Operation not permitted
+zsh:source:1: no such file or directory: .venv/bin/activate
+shell-init: error retrieving current directory: getcwd: cannot access parent directories: Operation not permitted
+job-working-directory: error retrieving current directory: getcwd: cannot access parent directories: Operation not permitted
+zsh:source:1: no such file or directory: .venv/bin/activate

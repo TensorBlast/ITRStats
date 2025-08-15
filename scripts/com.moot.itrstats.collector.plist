@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.moot.itrstats.collector</string>
+
+  <key>ProgramArguments</key>
+  <array>
+    <string>/Users/moot/Library/Mobile Documents/com~apple~CloudDocs/Documents/Programs/ITRStats/.venv/bin/python</string>
+    <string>-m</string>
+    <string>itrstats.run_if_needed</string>
+  </array>
+
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>PYTHONPATH</key>
+    <string>/Users/moot/Library/Mobile Documents/com~apple~CloudDocs/Documents/Programs/ITRStats/src</string>
+  </dict>
+
+  <!-- Check every hour; run_if_needed collects only if >4h since last -->
+  <key>StartInterval</key>
+  <integer>3600</integer>
+
+  <!-- At login/wake -->
+  <key>RunAtLoad</key>
+  <true/>
+
+  <!-- Try to ensure network availability -->
+  <key>NetworkState</key>
+  <true/>
+
+  <key>StandardOutPath</key>
+  <string>/Users/moot/Library/Logs/ITRStats/launchd.out.log</string>
+  <key>StandardErrorPath</key>
+  <string>/Users/moot/Library/Logs/ITRStats/launchd.err.log</string>
+</dict>
+</plist>

@@ -122,8 +122,8 @@ def main() -> None:
         avg_processed_delta = (last['avg_processed_last_7_days'] - prev['avg_processed_last_7_days']) if prev is not None and pd.notna(prev['avg_processed_last_7_days']) else None
         st.metric(
             "Avg Processed (7d)",
-            fmt(avg_processed_val) if pd.notna(avg_processed_val) else "N/A",
-            fmt(avg_processed_delta) if avg_processed_delta is not None and pd.notna(avg_processed_delta) else None,
+            f"{avg_processed_val:.2f}" if pd.notna(avg_processed_val) else "N/A",
+            f"{avg_processed_delta:.2f}" if avg_processed_delta is not None and pd.notna(avg_processed_delta) else None,
         )
 
 
@@ -195,7 +195,8 @@ def main() -> None:
     ]
     
     # Calculate mean of daily changes for each metric by weekday
-    weekly_agg = df.groupby("weekday")[list(daily_change_cols.values())].mean().reindex(weekdays)
+    # weekly_agg = df.groupby("weekday")[list(daily_change_cols.values())].mean().reindex(weekdays)
+    weekly_agg = df.groupby("weekday")["daily_total_processed_refund"].mean().reindex(weekdays)
     weekly_agg.columns = [col.replace("daily_", "").replace("_", " ").title() for col in weekly_agg.columns]
     
     st.bar_chart(weekly_agg)
