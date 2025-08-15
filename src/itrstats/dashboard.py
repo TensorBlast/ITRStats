@@ -89,6 +89,8 @@ def main() -> None:
 
     # Calculate 7-day rolling average of processed refunds
     df["avg_processed_last_7_days"] = df[daily_change_cols["total_processed_refund"]].rolling(window=7, min_periods=1).mean()
+    daily_change_cols["avg_processed_last_7_days"] = "daily_avg_processed_last_7_days"
+    df["daily_avg_processed_last_7_days"] = df["avg_processed_last_7_days"].diff().fillna(0)
 
     df = df.reset_index().rename(columns={"index": "provider_date"})
     df["weekday"] = df["provider_date"].dt.day_name()
@@ -118,12 +120,10 @@ def main() -> None:
             f"{last['daily_pending_processing_percentage']:.2%}",
         )
     with c6:
-        avg_processed_val = last['avg_processed_last_7_days']
-        avg_processed_delta = (last['avg_processed_last_7_days'] - prev['avg_processed_last_7_days']) if prev is not None and pd.notna(prev['avg_processed_last_7_days']) else None
         st.metric(
             "Avg Processed (7d)",
-            f"{avg_processed_val:.2f}" if pd.notna(avg_processed_val) else "N/A",
-            f"{avg_processed_delta:.2f}" if avg_processed_delta is not None and pd.notna(avg_processed_delta) else None,
+            f"{last["avg_processed_last_7_days"]:.2f}" if pd.notna(last["avg_processed_last_7_days"]) else "N/A",
+            f"{last[daily_change_cols['avg_processed_last_7_days']]:.2f}" if last[daily_change_cols["avg_processed_last_7_days"]] is not None and pd.notna(last[daily_change_cols["avg_processed_last_7_days"]]) else None,
         )
 
 
@@ -154,49 +154,86 @@ def main() -> None:
 
 
     st.subheader("Metrics Over Time")
-    st.write("Cumulative totals for key metrics, and the percentage of e-verified returns pending processing.")
+    st.write("e-Verified returns vs processed refunds: area chart showing total returns, processed refunds, and pending processing gap with percentage.")
 
-    # Melt cumulative data for plotting
-    cumulative_df_melted = df.melt(
-        id_vars=["provider_date"],
-        value_vars=cumulative_cols,
-        var_name="metric",
-        value_name="total",
+    # Calculate the gap (pending processing) as absolute numbers
+    df["pending_processing_absolute"] = df["e_verified_returns"] - df["total_processed_refund"]
+    
+    # Prepare data for stacked area chart
+    area_data = df[["provider_date", "total_processed_refund", "pending_processing_absolute", "pending_processing_percentage"]].copy()
+    
+    # Melt data for the stacked area chart
+    area_df_melted = area_data.melt(
+        id_vars=["provider_date", "pending_processing_percentage"],
+        value_vars=["total_processed_refund", "pending_processing_absolute"],
+        var_name="component",
+        value_name="count",
     )
-    cumulative_df_melted["metric"] = cumulative_df_melted["metric"].str.replace("_", " ").str.title()
-
-    # Layer 1: Cumulative counts
-    line_cumulative = alt.Chart(cumulative_df_melted).mark_line(point=True).encode(
+    
+    # Clean up component names for display
+    area_df_melted["component"] = area_df_melted["component"].replace({
+        "total_processed_refund": "Processed Refunds",
+        "pending_processing_absolute": "Pending Processing"
+    })
+    
+    # Create stacked area chart
+    area_chart = alt.Chart(area_df_melted).mark_area().encode(
         x=alt.X("provider_date:T", title="Date"),
-        y=alt.Y("total:Q", title="Cumulative Totals"),
-        color=alt.Color("metric:N", title="Metric"),
-        tooltip=["provider_date:T", "metric:N", alt.Tooltip("total:Q", format=",")],
+        y=alt.Y("count:Q", title="Number of Returns", stack="zero"),
+        color=alt.Color(
+            "component:N", 
+            title="Component",
+            scale=alt.Scale(
+                domain=["Processed Refunds", "Pending Processing"],
+                range=["#2E8B57", "#FF6B6B"]  # Green for processed, Red for pending
+            )
+        ),
+        tooltip=[
+            alt.Tooltip("provider_date:T", title="Date"),
+            alt.Tooltip("component:N", title="Component"),
+            alt.Tooltip("count:Q", format=",", title="Count"),
+            alt.Tooltip("pending_processing_percentage:Q", format=".2%", title="Pending %")
+        ],
+    ).properties(
+        height=400
     )
-
-    # Layer 2: Percentage line
-    line_percentage = alt.Chart(df).mark_line(point=True, strokeDash=[5,5], color="firebrick").encode(
-        x=alt.X("provider_date:T", title="Date"),
-        y=alt.Y("pending_processing_percentage:Q", title="Pending Processing %", axis=alt.Axis(format='%')),
-        tooltip=[alt.Tooltip("provider_date:T"), alt.Tooltip("pending_processing_percentage:Q", format=".2%")],
+    
+    # Add a line showing the total e-verified returns for reference
+    total_line = alt.Chart(df).mark_line(
+        point=True, 
+        color="black", 
+        strokeWidth=2,
+        strokeDash=[2, 2]
+    ).encode(
+        x=alt.X("provider_date:T"),
+        y=alt.Y("e_verified_returns:Q"),
+        tooltip=[
+            alt.Tooltip("provider_date:T", title="Date"),
+            alt.Tooltip("e_verified_returns:Q", format=",", title="Total e-Verified Returns"),
+            alt.Tooltip("pending_processing_percentage:Q", format=".2%", title="Pending %")
+        ]
     )
-
-    # Combine charts with independent y-axes
-    combined_chart = alt.layer(line_cumulative, line_percentage).resolve_scale(
-        y='independent'
+    
+    # Combine area chart with total line
+    combined_chart = alt.layer(area_chart, total_line).resolve_scale(
+        y='shared'
     ).interactive()
 
     st.altair_chart(combined_chart, use_container_width=True)
+    
+    # Add a small explanatory note
+    st.caption("📊 The area chart shows processed refunds (green) and pending processing (red). The dashed black line shows total e-verified returns for reference.")
 
 
     st.subheader("Weekly Processing Patterns")
-    st.write("Average daily change by day of the week for key metrics.")
+    st.write("Average daily processed refunds by day of the week.")
     weekdays = [
         "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"
     ]
     
     # Calculate mean of daily changes for each metric by weekday
     # weekly_agg = df.groupby("weekday")[list(daily_change_cols.values())].mean().reindex(weekdays)
-    weekly_agg = df.groupby("weekday")["daily_total_processed_refund"].mean().reindex(weekdays)
+    weekly_agg = df.groupby("weekday")[["daily_total_processed_refund"]].mean().reindex(weekdays)
     weekly_agg.columns = [col.replace("daily_", "").replace("_", " ").title() for col in weekly_agg.columns]
     
     st.bar_chart(weekly_agg)
